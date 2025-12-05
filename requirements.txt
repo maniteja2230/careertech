@@ -1,0 +1,5 @@
+flask
+sqlalchemy
+groq
+gunicorn
+psycopg2-binary
