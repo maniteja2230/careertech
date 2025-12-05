@@ -1,0 +1,120 @@
+/* Base tweaks */
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+/* Reusable components */
+
+.nav-link {
+  @apply hover:text-indigo-400;
+}
+
+/* Tailwind is from CDN; we use utility classes plus a few custom ones. */
+
+.hero-shell {
+  max-width: 72rem;
+}
+
+.hero-title {
+  @apply text-3xl md:text-4xl font-extrabold leading-tight;
+}
+
+.hero-sub {
+  @apply text-sm md:text-[15px] text-slate-300;
+}
+
+.pill-badge {
+  @apply inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/70 border border-slate-700 text-[11px] text-slate-300;
+}
+.pill-badge .dot {
+  @apply w-2 h-2 rounded-full bg-emerald-400;
+}
+
+.gradient-text {
+  background: linear-gradient(to right, #4f46e5, #22c55e);
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.hero-card {
+  @apply bg-slate-900/80 border border-slate-700 shadow-xl;
+}
+
+.primary-cta {
+  @apply inline-flex items-center justify-center px-5 py-2.5 rounded-full bg-indigo-600 text-xs md:text-sm font-semibold shadow shadow-indigo-500/40 hover:bg-indigo-500;
+}
+
+.ghost-cta {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-full border border-slate-600 text-xs md:text-sm hover:bg-slate-900/60;
+}
+
+.hero-footnote {
+  @apply text-[11px] text-slate-400 mt-1;
+}
+
+.feature-card {
+  @apply rounded-2xl bg-slate-900/70 border border-slate-800 p-4 text-xs md:text-sm font-semibold hover:border-indigo-500/80 hover:-translate-y-0.5 transition transform;
+}
+.feature-card .sub {
+  @apply text-[11px] text-slate-400 mt-1;
+}
+
+/* Auth */
+.auth-card {
+  @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl;
+}
+.input-box {
+  @apply w-full mt-2 mb-3 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs md:text-sm outline-none focus:border-indigo-500;
+}
+.submit-btn {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-xs md:text-sm font-semibold shadow shadow-indigo-500/40;
+}
+.error-msg {
+  @apply text-xs text-rose-400 mb-2;
+}
+
+/* Tables */
+.table {
+  @apply w-full text-left text-xs md:text-sm border border-slate-800 rounded-2xl overflow-hidden;
+}
+.table th {
+  @apply bg-slate-900 text-slate-300 font-semibold px-3 py-2 border-b border-slate-800;
+}
+.table td {
+  @apply px-3 py-2 border-b border-slate-800 text-slate-200;
+}
+
+/* Dashboard */
+.dash-box {
+  @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-3;
+}
+.dash-label {
+  @apply text-[11px] text-slate-400;
+}
+.dash-value {
+  @apply text-lg font-semibold;
+}
+
+.section-title {
+  @apply text-2xl md:text-3xl font-bold;
+}
+
+.label {
+  @apply block text-[11px] text-slate-400 mb-1;
+}
+
+.support-box {
+  @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4;
+}
+
+.mentor-card {
+  @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col;
+}
+
+.job-card {
+  @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4;
+}
+
+.search-bar {
+  @apply w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs md:text-sm;
+}
