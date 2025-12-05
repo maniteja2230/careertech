@@ -1,23 +1,50 @@
 import os
 from flask import (
-    Flask, request, redirect, session,
-    render_template_string
+    Flask,
+    request,
+    redirect,
+    session,
+    render_template_string,
+    url_for,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, Text
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Float,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 from groq import Groq
 
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "careertech_secret_key")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "careertech_super_secret")
 
+# -------------------- DB SETUP --------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///careertech.db")
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+)
+
+SessionLocal = scoped_session(
+    sessionmaker(bind=engine, autoflush=False, autocommit=False)
+)
+
 Base = declarative_base()
+
+
+def get_db():
+    return SessionLocal()
+
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    SessionLocal.remove()
 
 
 # -------------------- MODELS --------------------
@@ -33,7 +60,8 @@ class Course(Base):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
-    category = Column(String(255), nullable=False)  # CSE, ECE, etc.
+    level = Column(String(255), nullable=False)  # e.g. "B.Tech"
+    track = Column(String(255), nullable=False)  # e.g. "CSE - AI & ML"
 
 
 class College(Base):
@@ -41,8 +69,8 @@ class College(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     location = Column(String(255), nullable=False)
-    branch = Column(String(255), nullable=False)  # CSE / ECE / etc (main strength)
     fees = Column(Integer, nullable=False)
+    branch = Column(String(255), nullable=False)
     rating = Column(Float, nullable=False)
 
 
@@ -51,273 +79,266 @@ class Mentor(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     role = Column(String(255), nullable=False)
-    experience = Column(Text, nullable=False)
+    company = Column(String(255), nullable=False)
     speciality = Column(String(255), nullable=False)
+    experience = Column(Text, nullable=False)
 
 
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True)
-    title = Column(Text, nullable=False)
+    title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False)
     location = Column(String(255), nullable=False)
-    stipend = Column(String(255), nullable=False)
+    salary = Column(String(255), nullable=False)
+    track = Column(String(255), nullable=False)  # e.g. "AI/ML", "Full Stack"
 
 
-class AiUsage(Base):
-    __tablename__ = "ai_usage"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, unique=True)
-    used = Column(Integer, nullable=False, default=0)
-
-
-class UserProfile(Base):
-    __tablename__ = "user_profiles"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, unique=True)
-    branch = Column(String(255), nullable=True)
-    year = Column(String(50), nullable=True)
-    skills = Column(Text, nullable=True)
-    dream_roles = Column(Text, nullable=True)
-    resume_link = Column(String(500), nullable=True)
-
-
-def get_db():
-    return SessionLocal()
-
-
-def init_db():
-    db = get_db()
-    Base.metadata.create_all(bind=engine)
-
-    # ---- Seed courses ----
-    if db.query(Course).count() == 0:
-        courses_seed = [
-            ("Full Stack Web Development (MERN)", "CSE / IT"),
-            ("Data Science & Machine Learning with Python", "CSE / IT / AI"),
-            ("DSA & Competitive Programming Track", "CSE / IT"),
-            ("Embedded Systems & IoT", "ECE / EEE"),
-            ("VLSI & Chip Design Basics", "ECE"),
-            ("Robotics & Industrial Automation", "Mechanical / Mechatronics"),
-            ("Cloud & DevOps (AWS + Docker + CI/CD)", "CSE / IT"),
-            ("Cyber Security & Ethical Hacking", "CSE / IT"),
-            ("AI & GenAI for Engineers", "CSE / AI / DS"),
-            ("CATIA / Solidworks for Design Engineers", "Mechanical"),
-        ]
-        for name, cat in courses_seed:
-            db.add(Course(name=name, category=cat))
-
-    # ---- Seed colleges (example data) ----
-    if db.query(College).count() == 0:
-        colleges_seed = [
-            ("IIT Hyderabad", "Hyderabad, Telangana", "CSE / AI", 250000, 4.8),
-            ("IIIT Hyderabad", "Gachibowli, Hyderabad", "CSE", 280000, 4.7),
-            ("JNTU Hyderabad", "Kukatpally, Hyderabad", "CSE / ECE / ME", 90000, 4.3),
-            ("VNR VJIET", "Bachupally, Hyderabad", "CSE / ECE", 160000, 4.4),
-            ("CVR College of Engineering", "Ibrahimpatnam, Hyderabad", "CSE / IT / ECE", 130000, 4.2),
-            ("Gokaraju Rangaraju (GRIET)", "Nizampet, Hyderabad", "CSE / ECE / EEE", 150000, 4.3),
-            ("MLRIT", "Dundigal, Hyderabad", "CSE / AIML / DS", 140000, 4.1),
-            ("CMR College of Engineering & Tech", "Medchal Road, Hyderabad", "CSE / IT", 135000, 4.0),
-            ("Vasavi College of Engineering", "Ibrahimbagh, Hyderabad", "CSE / ECE / CIVIL", 175000, 4.5),
-            ("SR University", "Warangal Highway, Telangana", "CSE / AI / Robotics", 180000, 4.4),
-        ]
-        for name, loc, branch, fees, rating in colleges_seed:
-            db.add(College(name=name, location=loc, branch=branch, fees=fees, rating=rating))
-
-    # ---- Seed mentors ----
-    if db.query(Mentor).count() == 0:
-        mentors_seed = [
-            ("Krishna P.", "Senior Data Engineer @ Product Company",
-             "8+ years in data platforms, pipelines & analytics.",
-             "Data Engineering / Data Science Roadmaps"),
-            ("Ananya R.", "SDE-II @ FAANG-like company",
-             "Backend + system design + DSA interview prep.",
-             "Full Stack / Backend / DSA"),
-            ("Mohammed A.", "Cloud & DevOps Consultant",
-             "Helped 100+ students move into DevOps roles.",
-             "DevOps / Cloud / SRE"),
-            ("Tejaswini S.", "Robotics Engineer",
-             "Works on industrial automation & robotics startups.",
-             "Robotics / Embedded / IoT"),
-        ]
-        for n, role, exp, spec in mentors_seed:
-            db.add(Mentor(name=n, role=role, experience=exp, speciality=spec))
-
-    # ---- Seed jobs (internships snapshot) ----
-    if db.query(Job).count() == 0:
-        jobs_seed = [
-            ("Backend Developer Intern (Python / FastAPI)", "Early-stage SaaS Startup", "Remote", "₹15k–25k / month"),
-            ("Data Science Intern (ML + Dashboards)", "Analytics Firm", "Hyderabad / Remote", "₹10k–20k / month"),
-            ("DevOps Intern (AWS + CI/CD)", "Cloud Consulting Company", "Hyderabad", "₹12k–18k / month"),
-            ("Front-end React Intern", "EdTech Startup", "Hybrid – Hyderabad", "₹8k–15k / month"),
-            ("Embedded & IoT Intern", "Industrial Automation Company", "On-site – Hyderabad", "₹10k–15k / month"),
-        ]
-        for title, company, loc, stipend in jobs_seed:
-            db.add(Job(title=title, company=company, location=loc, stipend=stipend))
-
-    db.commit()
-    db.close()
-
-
-@app.teardown_appcontext
-def shutdown_session(exception=None):
-    SessionLocal.remove()
-
-
-init_db()
-
-
-# -------------------- GROQ HELPER --------------------
+# -------------------- AI (GROQ) --------------------
 def get_groq_client():
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return None
     return Groq(api_key=api_key)
 
 
 AI_SYSTEM_PROMPT = """
-You are CareerTech's AI mentor for B-Tech students in India.
+You are CareerTech's AI career guide for B.Tech students in India.
 
-Act like a friendly senior from a good product-based company.
-Ask step-by-step:
-1) Name, college, year and branch.
-2) Current skills (coding, tools, projects) and comfort with DSA.
-3) Target roles (SDE, Data Science, DevOps, Cybersecurity, Core).
-4) Time available per day and graduation year.
-5) Whether they want India jobs, remote work, or abroad.
+Your job:
+- Talk like a friendly senior from a top tech company.
+- Ask the student step by step:
+  1) Branch & year (CSE, ECE, Mechanical, etc.).
+  2) Skills so far (coding, DSA, dev, ML, etc.).
+  3) Their dream role (SDE, Data Scientist, AI Engineer, DevOps, etc.).
+  4) Whether they prefer higher studies, product companies, or startups.
+  5) Time they can spend daily.
 
 Then:
-- Suggest a realistic 6–12 month roadmap.
-- Include 2–3 project ideas.
-- Suggest online resources and topics (DSA, CS fundamentals, tools).
-- Keep answers short, clear and motivating.
+- Suggest a 3–6 month roadmap including:
+  - Skills
+  - Projects
+  - Internships / profiles to build
+- Mention realistic companies (Infosys, TCS, startups, product-based, etc.).
+- Keep answers short, structured and motivating.
+
+Very important:
+- Do NOT claim guaranteed jobs.
+- Make it clear this is guidance, not final placement advice.
 """
 
 
-# -------------------- BASE HTML LAYOUT --------------------
+# -------------------- DB INIT & SEED --------------------
+def init_db():
+    db = get_db()
+    Base.metadata.create_all(bind=engine)
+
+    if db.query(Course).count() == 0:
+        courses_seed = [
+            ("B.Tech CSE – Core Software Engineering", "B.Tech", "CSE"),
+            ("B.Tech CSE – AI & Machine Learning", "B.Tech", "CSE - AI & ML"),
+            ("B.Tech CSE – Data Science", "B.Tech", "CSE - Data Science"),
+            ("B.Tech ECE – VLSI & Embedded Systems", "B.Tech", "ECE - VLSI"),
+            ("B.Tech ECE – Communication Systems", "B.Tech", "ECE"),
+            ("B.Tech IT – Full Stack Development", "B.Tech", "IT - Full Stack"),
+            ("B.Tech Mechanical – Design & Manufacturing", "B.Tech", "Mechanical"),
+            ("B.Tech Civil – Construction & Planning", "B.Tech", "Civil"),
+            ("B.Tech EEE – Power & Automation", "B.Tech", "EEE"),
+        ]
+        for name, level, track in courses_seed:
+            db.add(Course(name=name, level=level, track=track))
+
+    if db.query(College).count() == 0:
+        colleges_seed = [
+            ("IIT Hyderabad", "Hyderabad, Telangana", 250000, "CSE", 4.9),
+            ("IIIT Hyderabad", "Gachibowli, Hyderabad", 280000, "CSE - AI & ML", 4.8),
+            ("JNTU Hyderabad (JNTUH)", "Kukatpally, Hyderabad", 80000, "CSE / ECE / EEE / Mech", 4.2),
+            ("CBIT Hyderabad", "Gandipet, Hyderabad", 150000, "CSE / IT / ECE / EEE", 4.3),
+            ("VNR VJIET", "Bachupally, Hyderabad", 160000, "CSE / ECE / Mech", 4.4),
+            ("Gokaraju Rangaraju (GRIET)", "Nizampet, Hyderabad", 135000, "CSE / AI / DS / ECE", 4.1),
+            ("Vasavi College of Engineering", "Ibrahimbagh, Hyderabad", 170000, "CSE / IT / ECE / Civil", 4.5),
+            ("MLRIT", "Dundigal, Hyderabad", 120000, "CSE / AI & ML / DS", 4.0),
+        ]
+        for name, loc, fees, branch, rating in colleges_seed:
+            db.add(College(name=name, location=loc, fees=fees, branch=branch, rating=rating))
+
+    if db.query(Mentor).count() == 0:
+        mentors_seed = [
+            ("Krishna P.", "Senior Software Engineer", "Microsoft", "System Design & DSA",
+             "8+ years in backend, system design interviews, and product-based hiring."),
+            ("Ananya R.", "Data Scientist", "Top FinTech Startup", "Data Science & ML",
+             "Worked on fraud detection, ML pipelines, and MLOps."),
+            ("Rahul S.", "SDE 2", "Amazon", "Low-level design & coding",
+             "Helped 100+ students crack SDE roles in product companies."),
+        ]
+        for n, role, company, spec, exp in mentors_seed:
+            db.add(Mentor(name=n, role=role, company=company, speciality=spec, experience=exp))
+
+    if db.query(Job).count() == 0:
+        jobs_seed = [
+            ("Software Development Engineer (SDE 1)", "Amazon / Microsoft / Flipkart", "Bangalore / Hyderabad",
+             "₹18–25 LPA (varies)", "SDE / Backend"),
+            ("Data Analyst / Junior Data Scientist", "FinTech / Product Startups", "Hyderabad / Pune / Remote",
+             "₹6–12 LPA", "Data / Analytics"),
+            ("Full Stack Developer", "SaaS & Startup Companies", "Remote / Bangalore", "₹5–15 LPA", "Full Stack"),
+            ("AI/ML Engineer", "AI First Startups", "Bangalore / Remote", "₹10–22 LPA", "AI/ML"),
+        ]
+        for title, company, loc, sal, track in jobs_seed:
+            db.add(Job(title=title, company=company, location=loc, salary=sal, track=track))
+
+    db.commit()
+    db.close()
+
+
+init_db()
+
+# -------------------- BASE LAYOUT (ULTRA-MODERN) --------------------
 BASE_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  {% if title %}
-    <title>{{ title }}</title>
-  {% else %}
-    <title>CareerTech</title>
-  {% endif %}
+  <title>{{ title or "CareerTech" }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="bg-slate-950 text-white font-[system-ui]">
+<body class="bg-[#020617] text-slate-50">
 
 <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
 
   <!-- NAVBAR -->
-  <nav class="flex items-center justify-between px-5 md:px-10 py-4 bg-black/40 backdrop-blur-md border-b border-slate-800">
-    <!-- Left: logo & title -->
+  <nav class="flex justify-between items-center px-5 md:px-10 py-4 bg-black/40 backdrop-blur-xl border-b border-slate-800 sticky top-0 z-40">
+    <!-- LOGO + TITLE -->
     <div class="flex items-center gap-3">
-      <div class="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg shadow-indigo-500/40">
-        <!-- You can replace this with your logo image -->
-        <span class="text-xl font-bold text-indigo-400">CT</span>
+      <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-gradient-to-br from-cyan-500 via-indigo-500 to-purple-500 flex items-center justify-center shadow-[0_0_40px_rgba(56,189,248,0.6)]">
+        <span class="text-xl md:text-2xl font-black tracking-tight">CT</span>
       </div>
       <div>
-        <p class="font-bold text-lg md:text-xl tracking-tight">CareerTech</p>
-        <p class="text-[11px] text-slate-400">B-Tech Careers · Roadmaps · Internships</p>
+        <p class="font-semibold text-lg md:text-xl tracking-tight">CareerTech</p>
+        <p class="text-[11px] text-slate-400">B.Tech · Skills · Projects · Jobs</p>
       </div>
     </div>
 
-    <!-- Right: links + user -->
-    <div class="hidden md:flex items-center gap-5 text-sm">
-      <a href="/" class="nav-link">Home</a>
-      <a href="/courses" class="nav-link">Courses</a>
-      <a href="/colleges" class="nav-link">Colleges</a>
-      <a href="/mentors" class="nav-link">Mentors</a>
-      <a href="/jobs" class="nav-link">Jobs</a>
-      <a href="/global-match" class="nav-link">Global Path</a>
-      <a href="/chatbot" class="nav-link">AI Mentor</a>
+    <!-- NAV LINKS -->
+    <div class="hidden lg:flex items-center gap-6 text-sm">
+      <a href="{{ url_for('home') }}" class="nav-link">Home</a>
+      <a href="{{ url_for('courses') }}" class="nav-link">Courses</a>
+      <a href="{{ url_for('colleges') }}" class="nav-link">Colleges</a>
+      <a href="{{ url_for('mentorship') }}" class="nav-link">Mentors</a>
+      <a href="{{ url_for('jobs') }}" class="nav-link">Jobs</a>
+      <a href="{{ url_for('global_match') }}" class="nav-link">Global Match</a>
+      <a href="{{ url_for('chatbot') }}" class="nav-link">AI Career Bot</a>
 
-      {% if session.get('user') %}
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700">
-          <div class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-semibold">
-            {{ session.get('user')[0]|upper }}
+      {% if session.get('user_name') %}
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/70 border border-slate-700">
+            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-xs font-semibold">
+              {{ session.get('user_name')[0]|upper }}
+            </div>
+            <div class="leading-tight">
+              <p class="text-[11px] text-slate-400">Logged in as</p>
+              <p class="text-xs font-semibold truncate max-w-[110px]">{{ session.get('user_name') }}</p>
+            </div>
           </div>
-          <div class="flex flex-col leading-tight">
-            <span class="text-[11px] text-slate-400 block">Logged in as</span>
-            <a href="/dashboard" class="text-[13px] font-semibold hover:text-indigo-300 truncate max-w-[120px]">
-              {{ session.get('user') }}
-            </a>
-          </div>
+          <a href="{{ url_for('dashboard') }}" class="px-3 py-1.5 rounded-full text-[12px] border border-indigo-500/80 bg-indigo-500/10 hover:bg-indigo-500/20">
+            Dashboard
+          </a>
+          <a href="{{ url_for('logout') }}" class="px-3 py-1.5 rounded-full text-[12px] bg-rose-500 hover:bg-rose-600 shadow shadow-rose-500/40">
+            Logout
+          </a>
         </div>
-        <a href="/logout" class="px-4 py-1.5 rounded-full bg-rose-500 hover:bg-rose-600 text-xs font-semibold shadow shadow-rose-500/40">
-          Logout
-        </a>
       {% else %}
-        <a href="/login" class="px-4 py-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-xs font-semibold shadow shadow-indigo-500/40">
-          Login
-        </a>
+        <div class="flex items-center gap-3">
+          <a href="{{ url_for('login') }}" class="px-4 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 text-xs font-medium hover:bg-slate-800">
+            Login
+          </a>
+          <a href="{{ url_for('signup') }}" class="px-4 py-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-xs font-semibold shadow shadow-indigo-500/50">
+            Get Started
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- MOBILE -->
+    <div class="lg:hidden flex items-center gap-3">
+      {% if session.get('user_name') %}
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-xs font-semibold">
+          {{ session.get('user_name')[0]|upper }}
+        </div>
       {% endif %}
     </div>
   </nav>
 
-  <!-- CONTENT -->
+  <!-- PAGE CONTENT -->
   <main class="px-4 md:px-10 py-8">
     {{ content|safe }}
   </main>
+
 </div>
 
-<!-- AI floating button -->
-<button id="aiFab"
-  class="fixed right-4 bottom-4 z-40 flex items-center gap-2 px-4 py-3 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 hover:scale-105 transition transform">
-  <span class="text-2xl">🤖</span>
-  <span class="text-xs text-left leading-tight">
-    <span class="font-semibold block">Need help?</span>
-    <span class="text-[10px] text-indigo-100">Ask CareerTech AI</span>
-  </span>
+<!-- AI POPUP -->
+<button id="aiFab" class="ai-fab">
+  <div class="ai-fab-inner">
+    <span class="text-2xl">🤖</span>
+  </div>
+  <span class="ai-fab-pulse"></span>
 </button>
 
-<!-- popup -->
-<div id="aiOverlay" class="hidden fixed inset-0 bg-black/60 z-40"></div>
-<div id="aiPopup" class="hidden fixed right-4 bottom-20 w-[360px] max-w-[94vw] bg-slate-900/95 border border-indigo-500/60 rounded-2xl shadow-2xl p-4 z-50">
+<div id="aiModalBg" class="ai-modal-bg"></div>
+
+<div id="aiModal" class="ai-modal">
   <div class="flex items-center justify-between mb-2">
     <div class="flex items-center gap-2">
-      <span class="text-2xl">🤖</span>
+      <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-sm">
+        🤖
+      </div>
       <div>
-        <p class="text-sm font-semibold">CareerTech AI Mentor</p>
-        <p class="text-[10px] text-slate-400">Gets you a roadmap in under a minute.</p>
+        <p class="text-sm font-semibold">CareerTech AI</p>
+        <p class="text-[11px] text-slate-400">Your personal tech career co-pilot</p>
       </div>
     </div>
-    <button id="aiClose" class="text-slate-400 hover:text-white text-lg">✕</button>
+    <button id="closeAi" class="text-slate-400 hover:text-slate-100 text-lg leading-none">&times;</button>
   </div>
   <p class="text-xs text-slate-300 mb-3">
-    Ask doubts on skills, projects, internships or placements. Start by telling your branch &amp; year.
+    Ask anything about B.Tech careers, skills, projects or interviews.
   </p>
   <div class="flex flex-col gap-2">
-    <a href="/chatbot" class="w-full primary-cta text-center text-xs py-2.5">Open AI Career Mentor</a>
-    <a href="/dashboard" class="w-full text-[11px] text-center px-3 py-2 rounded-full border border-slate-600 hover:bg-slate-800">
-      View your profile &amp; roadmap
+    <a href="{{ url_for('chatbot') }}" class="ai-modal-btn-primary">
+      Start AI Career Chat
+    </a>
+    <a href="{{ url_for('jobs') }}" class="ai-modal-btn-ghost">
+      View trending tech roles
     </a>
   </div>
 </div>
 
 <script>
-  const fab = document.getElementById('aiFab');
-  const popup = document.getElementById('aiPopup');
-  const overlay = document.getElementById('aiOverlay');
-  const closeBtn = document.getElementById('aiClose');
+  const aiFab = document.getElementById('aiFab');
+  const aiModal = document.getElementById('aiModal');
+  const aiModalBg = document.getElementById('aiModalBg');
+  const closeAi = document.getElementById('closeAi');
 
-  function openPopup() {
-    popup.classList.remove('hidden');
-    overlay.classList.remove('hidden');
+  function openAi() {
+    aiModal.style.display = 'block';
+    aiModalBg.style.display = 'block';
   }
-  function closePopup() {
-    popup.classList.add('hidden');
-    overlay.classList.add('hidden');
+  function closeAiModal() {
+    aiModal.style.display = 'none';
+    aiModalBg.style.display = 'none';
   }
 
-  fab.addEventListener('click', openPopup);
-  overlay.addEventListener('click', closePopup);
-  closeBtn.addEventListener('click', closePopup);
+  aiFab.addEventListener('click', openAi);
+  aiModalBg.addEventListener('click', closeAiModal);
+  closeAi.addEventListener('click', closeAiModal);
+
+  // Auto-attention after few seconds on first visit
+  setTimeout(() => {
+    if (!sessionStorage.getItem('ai_seen')) {
+      openAi();
+      sessionStorage.setItem('ai_seen', '1');
+    }
+  }, 4000);
 </script>
 
 </body>
@@ -329,30 +350,168 @@ def render_page(content_html, title="CareerTech"):
     return render_template_string(BASE_HTML, content=content_html, title=title)
 
 
+# -------------------- HOME --------------------
+@app.route("/")
+def home():
+    user_name = session.get("user_name")
+
+    if user_name:
+        greeting = "Welcome back, " + user_name.split()[0]
+    else:
+        greeting = "Build your tech career, step by step."
+
+    content = f"""
+    <div class="max-w-6xl mx-auto space-y-12 hero-shell">
+      <!-- HERO -->
+      <section class="grid md:grid-cols-2 gap-10 items-center">
+        <div class="space-y-4">
+          <span class="pill-badge">
+            <span class="pill-dot"></span>
+            B.Tech · Career Intelligence Platform
+          </span>
+
+          <h1 class="hero-title">
+            Turn your <span class="gradient-text">B-Tech degree</span> into a real tech career.
+          </h1>
+
+          <p class="hero-sub">
+            CareerTech gives B.Tech students branch-based roadmaps, skills, projects, mentors and AI guidance — all in one place.
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3 mt-2">
+            <a href="{url_for('signup')}" class="primary-cta">
+              🚀 Get started – ₹299 / year (demo)
+            </a>
+            <a href="{url_for('chatbot')}" class="ghost-cta">
+              🤖 Try AI career planner
+            </a>
+          </div>
+
+          <p class="hero-footnote">
+            Designed for CSE, ECE, IT, Mechanical, Civil, EEE and more. Built for Indian engineering colleges.
+          </p>
+        </div>
+
+        <!-- RIGHT: BIG DASHBOARD PREVIEW CARD -->
+        <div class="hero-card">
+          <p class="text-[11px] text-cyan-300 uppercase tracking-[0.25em] mb-2">Student Snapshot</p>
+          <h3 class="text-lg font-semibold mb-3">B.Tech CSE · 3rd Year · Career Overview</h3>
+          <div class="grid grid-cols-2 gap-4 mb-5">
+            <div class="dash-chip">
+              <p class="chip-label">Career Track</p>
+              <p class="chip-value">SDE · Backend</p>
+            </div>
+            <div class="dash-chip">
+              <p class="chip-label">Readiness</p>
+              <p class="chip-value">3.5 / 5</p>
+            </div>
+            <div class="dash-chip">
+              <p class="chip-label">Core Stack</p>
+              <p class="chip-value">DSA · Java · SQL</p>
+            </div>
+            <div class="dash-chip">
+              <p class="chip-label">Next 30 days</p>
+              <p class="chip-value">2 projects · 40 DSA</p>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 mb-1">Powered by branch-based roadmaps, mentor inputs and AI planning.</p>
+          <div class="flex items-center gap-2">
+            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full w-3/4 bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-500"></div>
+            </div>
+            <span class="text-[11px] text-slate-300">75% Journey mapped</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURE GRID -->
+      <section class="space-y-4">
+        <h3 class="section-title">CareerTech Spaces</h3>
+        <p class="section-sub">
+          All the key pieces B.Tech students need – brought into one clean interface.
+        </p>
+
+        <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <a href="{url_for('courses')}" class="feature-card">
+            <span class="feature-icon">📚</span>
+            <div>
+              <p class="feature-title">Branch Courses</p>
+              <p class="feature-sub">CSE, ECE, IT, Mech, Civil, EEE & more.</p>
+            </div>
+          </a>
+
+          <a href="{url_for('colleges')}" class="feature-card">
+            <span class="feature-icon">🏫</span>
+            <div>
+              <p class="feature-title">Colleges Map</p>
+              <p class="feature-sub">Fees, branches & ratings snapshot.</p>
+            </div>
+          </a>
+
+          <a href="{url_for('mentorship')}" class="feature-card">
+            <span class="feature-icon">🧑‍💻</span>
+            <div>
+              <p class="feature-title">Mentors</p>
+              <p class="feature-sub">SDEs, Data Scientists, startup engineers.</p>
+            </div>
+          </a>
+
+          <a href="{url_for('jobs')}" class="feature-card">
+            <span class="feature-icon">💼</span>
+            <div>
+              <p class="feature-title">Jobs & Roles</p>
+              <p class="feature-sub">SDE, Data, AI, Full Stack & more.</p>
+            </div>
+          </a>
+
+          <a href="{url_for('global_match')}" class="feature-card">
+            <span class="feature-icon">🌍</span>
+            <div>
+              <p class="feature-title">Global Match</p>
+              <p class="feature-sub">MS / Masters & global tech paths.</p>
+            </div>
+          </a>
+
+          <a href="{url_for('chatbot')}" class="feature-card">
+            <span class="feature-icon">🤖</span>
+            <div>
+              <p class="feature-title">AI Career Bot</p>
+              <p class="feature-sub">Personalised tech roadmap in minutes.</p>
+            </div>
+          </a>
+        </div>
+      </section>
+    </div>
+    """
+    return render_page(content, "CareerTech | Home")
+
+
 # -------------------- AUTH --------------------
 SIGNUP_FORM = """
 <form method="POST" class="auth-card max-w-md mx-auto">
-  <h2 class="text-xl font-bold mb-3">Create your CareerTech account</h2>
-  <p class="text-xs text-slate-400 mb-3">Simple account to save your profile, skills and roadmap.</p>
+  <h2 class="text-xl md:text-2xl font-bold mb-2">Create your CareerTech account</h2>
+  <p class="text-xs text-slate-400 mb-4">For B.Tech, diploma and fresh engineering graduates.</p>
   <input name="name" placeholder="Full Name" required class="input-box">
   <input name="email" placeholder="Email" required class="input-box">
   <input name="password" type="password" placeholder="Password" required class="input-box">
-  <button class="submit-btn w-full">Signup</button>
-  <p class="text-gray-400 mt-3 text-xs text-center">
-    Already registered? <a href="/login" class="text-indigo-300 underline">Login</a>
+  <button class="submit-btn">Sign up</button>
+  <p class="text-slate-400 mt-3 text-xs">
+    Already registered?
+    <a href="/login" class="text-cyan-300 hover:underline">Login</a>
   </p>
 </form>
 """
 
 LOGIN_FORM = """
 <form method="POST" class="auth-card max-w-md mx-auto">
-  <h2 class="text-xl font-bold mb-3">Login to CareerTech</h2>
-  <p class="text-xs text-slate-400 mb-3">Access your personalised B-Tech career dashboard.</p>
+  <h2 class="text-xl md:text-2xl font-bold mb-2">Login to CareerTech</h2>
+  <p class="text-xs text-slate-400 mb-4">Continue your tech career journey.</p>
   <input name="email" placeholder="Email" required class="input-box">
   <input name="password" type="password" placeholder="Password" required class="input-box">
-  <button class="submit-btn w-full">Login</button>
-  <p class="text-gray-400 mt-3 text-xs text-center">
-    New here? <a href="/signup" class="text-indigo-300 underline">Create account</a>
+  <button class="submit-btn">Login</button>
+  <p class="text-slate-400 mt-3 text-xs">
+    New here?
+    <a href="/signup" class="text-cyan-300 hover:underline">Create Account</a>
   </p>
 </form>
 """
@@ -366,13 +525,19 @@ def signup():
         password = request.form.get("password", "").strip()
 
         if not name or not email or not password:
-            return render_page("<p class='error-msg'>All fields are required.</p>" + SIGNUP_FORM, "Signup")
+            return render_page(
+                "<p class='error-text'>All fields are required.</p>" + SIGNUP_FORM,
+                "Signup"
+            )
 
         db = get_db()
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             db.close()
-            return render_page("<p class='error-msg'>Email already registered. Please login.</p>" + SIGNUP_FORM, "Signup")
+            return render_page(
+                "<p class='error-text'>Account already exists. Please login.</p>" + SIGNUP_FORM,
+                "Signup"
+            )
 
         hashed = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
         user = User(name=name, email=email, password=hashed)
@@ -401,14 +566,16 @@ def login():
             except Exception:
                 ok = (user.password == password)
 
-        if not ok:
-            return render_page("<p class='error-msg'>Invalid email or password.</p>" + LOGIN_FORM, "Login")
+        if ok:
+            session["user_id"] = user.id
+            session["user_name"] = user.name
+            session["ai_history"] = []
+            return redirect("/dashboard")
 
-        session["user"] = user.name
-        session["user_id"] = user.id
-        session["ai_history"] = []
-        session["first_time"] = True
-        return redirect("/dashboard")
+        return render_page(
+            "<p class='error-text'>Invalid email or password.</p>" + LOGIN_FORM,
+            "Login"
+        )
 
     return render_page(LOGIN_FORM, "Login")
 
@@ -419,339 +586,144 @@ def logout():
     return redirect("/")
 
 
-# -------------------- HOME --------------------
-@app.route("/")
-def home():
-    logged_in = "user_id" in session
-
-    if logged_in:
-        primary_cta = '<a href="/dashboard" class="primary-cta">Open my dashboard</a>'
-        subline = "Get your personalised roadmap, skills and internships in one place."
-    else:
-        primary_cta = '<a href="/signup" class="primary-cta">Create free student account</a>'
-        subline = "Login or signup to save your roadmap and progress."
-
-    content = f"""
-    <div class="max-w-6xl mx-auto mt-4 md:mt-8 space-y-10 hero-shell">
-      <!-- HERO -->
-      <section class="grid md:grid-cols-2 gap-10 items-center">
-        <div class="space-y-4">
-          <span class="pill-badge"><span class="dot"></span>CareerTech · For serious B-Tech students</span>
-          <h1 class="hero-title">
-            Turn your <span class="gradient-text">B-Tech degree</span> into a real tech career.
-          </h1>
-          <p class="hero-sub">
-            Skill roadmaps, projects, internships and an AI mentor — all tuned for Indian engineering students.
-          </p>
-          <div class="flex flex-wrap items-center gap-3 mt-2">
-            {primary_cta}
-            <a href="/chatbot" class="ghost-cta">Ask AI career doubts</a>
-          </div>
-          <p class="hero-footnote">{subline}</p>
-        </div>
-
-        <!-- RIGHT: Card -->
-        <div class="hero-card rounded-3xl p-7 md:p-8 space-y-5">
-          <p class="text-xs tracking-[0.22em] text-slate-400 uppercase">Student pass (prototype)</p>
-          <div class="flex items-end gap-3">
-            <span class="text-5xl font-extrabold text-emerald-300">₹299</span>
-            <span class="text-sm text-slate-300 mb-2">per student / year</span>
-          </div>
-          <p class="text-[13px] text-slate-300">
-            One simple pass that bundles roadmaps, mentors, internships, projects and AI support for B-Tech students.
-          </p>
-          <ul class="text-xs text-slate-200 space-y-1.5">
-            <li>• Branch-wise skill roadmaps (CSE, ECE, Mechanical, etc.)</li>
-            <li>• Project ideas and final-year project support</li>
-            <li>• Internship &amp; job snapshot with real tech roles</li>
-            <li>• AI + human mentors for career decisions</li>
-          </ul>
-        </div>
-      </section>
-
-      <!-- FEATURE GRID -->
-      <section class="space-y-3">
-        <h3 class="section-title">CareerTech spaces</h3>
-        <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-          <a href="/courses" class="feature-card">
-            🧾 Courses
-            <p class="sub">Skills &amp; courses you really need.</p>
-          </a>
-          <a href="/colleges" class="feature-card">
-            🏫 Colleges
-            <p class="sub">Key engineering colleges snapshot.</p>
-          </a>
-          <a href="/mentors" class="feature-card">
-            👨‍🏫 Mentors
-            <p class="sub">Talk to working engineers.</p>
-          </a>
-          <a href="/jobs" class="feature-card">
-            💼 Jobs &amp; Internships
-            <p class="sub">Real tech roles &amp; stipends.</p>
-          </a>
-          <a href="/global-match" class="feature-card">
-            🌍 Global Path
-            <p class="sub">MS / remote / abroad options.</p>
-          </a>
-          <a href="/chatbot" class="feature-card">
-            🤖 AI Career Mentor
-            <p class="sub">Ask doubts 24×7.</p>
-          </a>
-        </div>
-      </section>
-    </div>
-    """
-    return render_page(content, "CareerTech | Home")
-
-
 # -------------------- DASHBOARD --------------------
-@app.route("/dashboard", methods=["GET", "POST"])
+@app.route("/dashboard")
 def dashboard():
     if "user_id" not in session:
         return redirect("/login")
 
-    user_id = session["user_id"]
-    user_name = session["user"]
-    tab = request.args.get("tab", "overview")
-
-    db = get_db()
-    profile = db.query(UserProfile).filter_by(user_id=user_id).first()
-    if profile is None:
-        profile = UserProfile(
-            user_id=user_id,
-            branch="",
-            year="",
-            skills="Python, Problem Solving, Git",
-            dream_roles="Software Developer, Data Engineer",
-            resume_link=""
-        )
-        db.add(profile)
-        db.commit()
-
-    if request.method == "POST":
-        active_tab = request.form.get("tab", "overview")
-        if active_tab == "profile":
-            profile.branch = request.form.get("branch", "").strip()
-            profile.year = request.form.get("year", "").strip()
-            profile.dream_roles = request.form.get("dream_roles", "").strip()
-            db.commit()
-            db.close()
-            return redirect("/dashboard?tab=profile")
-        if active_tab == "skills":
-            profile.skills = request.form.get("skills", "").strip()
-            profile.resume_link = request.form.get("resume_link", "").strip()
-            db.commit()
-            db.close()
-            return redirect("/dashboard?tab=skills")
-
-    # refresh values
-    branch = profile.branch or ""
-    year = profile.year or ""
-    skills = profile.skills or ""
-    dream_roles = profile.dream_roles or ""
-    resume_link = profile.resume_link or ""
-    db.close()
-
-    first_time = session.pop("first_time", False)
-    greeting = "CareerTech welcomes you 🎉" if first_time else "Welcome back 👋"
-
-    overview_panel = f"""
-      <div class="space-y-4">
-        <h2 class="text-2xl md:text-3xl font-bold">{greeting}, {user_name}</h2>
-        <p class="text-sm text-slate-300">
-          This is your personal B-Tech career dashboard. Start by filling your branch, year,
-          skills and dream roles — then ask the AI mentor for a customised roadmap.
-        </p>
-
-        <div class="grid md:grid-cols-3 gap-4 mt-4">
-          <div class="dash-box">
-            <p class="dash-label">Branch</p>
-            <p class="dash-value">{branch or "Not set"}</p>
-          </div>
-          <div class="dash-box">
-            <p class="dash-label">Year</p>
-            <p class="dash-value">{year or "Not set"}</p>
-          </div>
-          <div class="dash-box">
-            <p class="dash-label">Dream roles</p>
-            <p class="dash-value text-sm">{dream_roles or "Example: SDE, Data Scientist, DevOps"}</p>
-          </div>
-        </div>
-
-        <div class="grid md:grid-cols-2 gap-4 mt-4">
-          <div class="bg-slate-900/70 border border-slate-700 rounded-2xl p-4">
-            <h3 class="font-semibold mb-2 text-sm">CareerTech guidance</h3>
-            <ul class="text-xs text-slate-300 space-y-1.5">
-              <li>• Make one strong stack (e.g., Python + SQL + one framework).</li>
-              <li>• Build 2–3 high-signal projects per role (SDE, DS, DevOps etc.).</li>
-              <li>• Practice DSA for at least 30–60 mins/day.</li>
-              <li>• Use internships and freelancing to prove skills.</li>
-            </ul>
-          </div>
-          <div class="bg-slate-900/70 border border-slate-700 rounded-2xl p-4">
-            <h3 class="font-semibold mb-2 text-sm">How to use this website</h3>
-            <ol class="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
-              <li>Fill your basic profile &amp; skills in the tabs on the left.</li>
-              <li>Open <b>AI Mentor</b> from navbar or floating button and ask for a roadmap.</li>
-              <li>Check <b>Courses</b>, <b>Colleges</b>, <b>Jobs</b> for ideas and targets.</li>
-              <li>Iterate every month and keep updating your skills &amp; projects.</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    """
-
-    profile_panel = f"""
-      <div class="space-y-4">
-        <h2 class="section-title">Profile basics</h2>
-        <form method="POST" class="space-y-3">
-          <input type="hidden" name="tab" value="profile">
-          <div>
-            <label class="label">Branch</label>
-            <input name="branch" class="input-box" placeholder="CSE / ECE / Mechanical / Civil / AI &amp; DS" value="{branch}">
-          </div>
-          <div>
-            <label class="label">Year</label>
-            <input name="year" class="input-box" placeholder="2nd year / 3rd year / final year" value="{year}">
-          </div>
-          <div>
-            <label class="label">Dream roles</label>
-            <textarea name="dream_roles" rows="3" class="input-box h-auto" placeholder="Example: Backend developer, Data engineer, DevOps engineer">{dream_roles}</textarea>
-          </div>
-          <button class="submit-btn">Save profile</button>
-        </form>
-      </div>
-    """
-
-    skills_panel = f"""
-      <div class="space-y-4">
-        <h2 class="section-title">Skills &amp; resume</h2>
-        <form method="POST" class="space-y-3">
-          <input type="hidden" name="tab" value="skills">
-          <div>
-            <label class="label">Current skills</label>
-            <textarea name="skills" rows="4" class="input-box h-auto" placeholder="Example: Python, OOP, basic SQL, HTML/CSS/JS, Git, Linux">{skills}</textarea>
-          </div>
-          <div>
-            <label class="label">Resume / portfolio link</label>
-            <input name="resume_link" class="input-box" placeholder="Google Drive / GitHub / personal site link" value="{resume_link}">
-          </div>
-          <button class="submit-btn">Save skills</button>
-        </form>
-        {"<p class='text-xs text-emerald-300'>Current link: <a href='" + resume_link + "' target='_blank' class='underline'>" + resume_link + "</a></p>" if resume_link else ""}
-      </div>
-    """
-
-    help_panel = """
-      <div class="space-y-4">
-        <h2 class="section-title">FAQ &amp; Support</h2>
-        <p class="text-sm text-slate-300">
-          This is a prototype built to show how a focused B-Tech career platform can look and behave.
-          Data like colleges, fees, jobs and roadmaps are indicative but realistic.
-        </p>
-        <div class="bg-slate-900/70 border border-slate-700 rounded-2xl p-4 space-y-2 text-xs text-slate-300">
-          <p><b>Is this live for payments?</b> Not yet. ₹299/year is a sample student pass for demo.</p>
-          <p><b>Where do the jobs &amp; internships come from?</b> These are example roles corresponding to the current market.</p>
-          <p><b>What can be added?</b> Real college integrations, company panels, verified internships and live mentor marketplace.</p>
-        </div>
-      </div>
-    """
-
-    base_tab = "block w-full text-left px-3 py-2 rounded-lg text-xs md:text-sm"
-    def tab_cls(name):
-        return base_tab + (" bg-indigo-600 text-white border border-indigo-500" if tab == name else " text-slate-300 hover:bg-slate-800 border border-transparent")
-
-    if tab == "overview":
-        panel = overview_panel
-    elif tab == "profile":
-        panel = profile_panel
-    elif tab == "skills":
-        panel = skills_panel
-    else:
-        panel = help_panel
+    name = session.get("user_name", "Student").split()[0]
 
     content = f"""
-    <div class="max-w-6xl mx-auto">
-      <div class="mb-4">
-        <p class="text-xs text-slate-400">Profile · B-Tech</p>
-        <h1 class="text-2xl md:text-3xl font-bold">Student dashboard</h1>
+    <div class="max-w-6xl mx-auto space-y-6">
+      <div class="flex flex-wrap justify-between gap-3 items-end">
+        <div>
+          <p class="text-xs text-slate-400 mb-1">Student Dashboard · CareerTech</p>
+          <h1 class="text-2xl md:text-3xl font-bold">Hi {name}, here's your tech journey snapshot ⚡</h1>
+        </div>
+        <a href="{url_for('chatbot')}" class="px-3 py-1.5 rounded-full text-xs bg-gradient-to-r from-cyan-500 to-indigo-500 shadow shadow-cyan-500/40">
+          Ask AI: “What should I do next?”
+        </a>
       </div>
 
-      <div class="grid md:grid-cols-[220px,1fr] gap-6">
-        <!-- SIDE TABS -->
-        <aside class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 h-max">
-          <p class="text-[11px] text-slate-400 mb-1">Your account</p>
-          <p class="text-sm font-semibold mb-4 truncate">{user_name}</p>
-          <nav class="flex flex-col gap-2">
-            <a href="/dashboard?tab=overview" class="{tab_cls('overview')}">🏠 Overview</a>
-            <a href="/dashboard?tab=profile" class="{tab_cls('profile')}">🧑‍🎓 Profile</a>
-            <a href="/dashboard?tab=skills" class="{tab_cls('skills')}">⭐ Skills &amp; resume</a>
-            <a href="/dashboard?tab=help" class="{tab_cls('help')}">❓ Help &amp; FAQ</a>
-          </nav>
-        </aside>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="dash-card">
+          <p class="dash-label">Status</p>
+          <p class="dash-value">Planning tech career</p>
+          <p class="dash-foot">Roadmap: Skills · Projects · Internships.</p>
+        </div>
+        <div class="dash-card">
+          <p class="dash-label">Focus Tracks</p>
+          <p class="dash-value">SDE / Data / AI</p>
+          <p class="dash-foot">Choose 1–2 max and go deep.</p>
+        </div>
+        <div class="dash-card">
+          <p class="dash-label">Next 30 days</p>
+          <p class="dash-value">Build 1 strong project</p>
+          <p class="dash-foot">Show skills instead of marks.</p>
+        </div>
+      </div>
 
-        <!-- MAIN PANEL -->
-        <section class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 md:p-6">
-          {panel}
-        </section>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+          <h3 class="section-title mb-2">CareerTech guidance</h3>
+          <ul class="text-xs md:text-sm text-slate-300 space-y-1.5">
+            <li>• Pick a primary track: <b>SDE</b>, <b>Data</b>, <b>AI/ML</b>, <b>DevOps</b> or <b>Core</b>.</li>
+            <li>• Do 2–3 <b>resume-worthy projects</b> instead of 10 tiny ones.</li>
+            <li>• Practice <b>DSA or problem-solving</b> at least 30–45 mins daily.</li>
+            <li>• Maintain a clean <b>GitHub</b> and <b>LinkedIn</b> profile.</li>
+            <li>• Use the AI bot for roadmap suggestions and project ideas.</li>
+          </ul>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+          <h3 class="section-title mb-2">How to use this website (quick walkthrough)</h3>
+          <ol class="text-xs md:text-sm text-slate-300 space-y-1.5 list-decimal list-inside">
+            <li>Open <b>Courses</b> to see branch-wise options and specializations.</li>
+            <li>Check <b>Colleges</b> with filters by budget & rating.</li>
+            <li>Explore <b>Jobs</b> to understand real roles & packages.</li>
+            <li>Talk to <b>Mentors</b> (demo) to simulate real guidance.</li>
+            <li>Use <b>AI Career Bot</b> to generate a personalised plan.</li>
+          </ol>
+          <p class="text-[11px] text-slate-400 mt-3">
+            Video idea (for demo): One screen recording (2–3 mins) where a student logs in, checks colleges, views jobs and chats with AI.
+          </p>
+        </div>
       </div>
     </div>
     """
-    return render_page(content, "Dashboard")
+    return render_page(content, "Dashboard | CareerTech")
 
 
 # -------------------- COURSES --------------------
 @app.route("/courses")
 def courses():
     db = get_db()
-    data = db.query(Course).order_by(Course.category.asc()).all()
+    data = db.query(Course).order_by(Course.level.asc(), Course.name.asc()).all()
     db.close()
 
     rows = ""
     for c in data:
-        rows += f"<tr><td>{c.name}</td><td>{c.category}</td></tr>"
+        rows += f"""
+        <tr>
+          <td>{c.level}</td>
+          <td>{c.name}</td>
+          <td>{c.track}</td>
+        </tr>
+        """
 
     if not rows:
-        rows = "<tr><td colspan='2'>No courses yet.</td></tr>"
+        rows = "<tr><td colspan='3'>No courses found yet.</td></tr>"
 
     content = f"""
     <div class="max-w-5xl mx-auto">
-      <h2 class="section-title mb-3">Skill-first courses for B-Tech students</h2>
-      <p class="text-sm text-slate-300 mb-3">
-        These are the kind of courses and tracks that actually improve hiring chances in current tech companies.
+      <h2 class="page-title">Branch-based Courses & Tracks</h2>
+      <p class="page-sub">
+        These are example B.Tech specializations and tracks students commonly pursue in India.
+        Exact names depend on each college and university.
       </p>
-      <table class="table mt-2">
-        <tr><th>Course / Track</th><th>Best suits</th></tr>
+
+      <table class="table mt-4">
+        <tr>
+          <th>Level</th>
+          <th>Course / Specialization</th>
+          <th>Track / Branch</th>
+        </tr>
         {rows}
       </table>
     </div>
     """
-    return render_page(content, "Courses")
+    return render_page(content, "Courses | CareerTech")
 
 
 # -------------------- COLLEGES --------------------
 @app.route("/colleges")
 def colleges():
     budget = request.args.get("budget", "").strip()
+    branch = request.args.get("branch", "").strip()
     rating_min = request.args.get("rating", "").strip()
+
     db = get_db()
-    q = db.query(College)
+    query = db.query(College)
 
     if budget == "lt1":
-        q = q.filter(College.fees < 100000)
+        query = query.filter(College.fees < 100000)
     elif budget == "b1_2":
-        q = q.filter(College.fees.between(100000, 200000))
+        query = query.filter(College.fees.between(100000, 200000))
     elif budget == "gt2":
-        q = q.filter(College.fees > 200000)
+        query = query.filter(College.fees > 200000)
+
+    if branch:
+        query = query.filter(College.branch.ilike(f"%{branch}%"))
 
     if rating_min:
         try:
-            rv = float(rating_min)
-            q = q.filter(College.rating >= rv)
+            val = float(rating_min)
+            query = query.filter(College.rating >= val)
         except ValueError:
             pass
 
-    data = q.order_by(College.rating.desc()).all()
+    data = query.order_by(College.rating.desc()).all()
     db.close()
 
     rows = ""
@@ -759,67 +731,82 @@ def colleges():
         rows += f"""
         <tr>
           <td>{col.name}</td>
-          <td>{col.location}</td>
           <td>{col.branch}</td>
+          <td>{col.location}</td>
           <td>₹{col.fees:,}</td>
           <td>{col.rating:.1f}★</td>
         </tr>
         """
+
     if not rows:
-        rows = "<tr><td colspan='5'>No colleges match this filter.</td></tr>"
+        rows = "<tr><td colspan='5'>No colleges match this filter yet.</td></tr>"
 
-    sel_any_b = "selected" if budget == "" else ""
-    sel_lt1 = "selected" if budget == "lt1" else ""
-    sel_b1_2 = "selected" if budget == "b1_2" else ""
-    sel_gt2 = "selected" if budget == "gt2" else ""
+    sel_b_any = "selected" if budget == "" else ""
+    sel_b_lt1 = "selected" if budget == "lt1" else ""
+    sel_b_b1_2 = "selected" if budget == "b1_2" else ""
+    sel_b_gt2 = "selected" if budget == "gt2" else ""
 
-    sel_any_r = "selected" if rating_min == "" else ""
-    sel_40 = "selected" if rating_min == "4.0" else ""
-    sel_45 = "selected" if rating_min == "4.5" else ""
+    sel_r_any = "selected" if rating_min == "" else ""
+    sel_r_4 = "selected" if rating_min == "4.0" else ""
+    sel_r_45 = "selected" if rating_min == "4.5" else ""
 
     content = f"""
     <div class="max-w-6xl mx-auto">
-      <h2 class="section-title mb-3">Engineering colleges snapshot (example data)</h2>
-      <p class="text-sm text-slate-300 mb-4">
-        Fees and ratings are indicative for demo, focused on Hyderabad / Telangana engineering colleges
-        that B-Tech students commonly target.
+      <h2 class="page-title">B.Tech Colleges – Snapshot (Hyderabad Focus)</h2>
+      <p class="page-sub">
+        Fees and ratings below are indicative for demo purposes. Always confirm with official college sources.
       </p>
 
-      <form method="GET" class="mb-4 grid md:grid-cols-3 gap-3">
-        <select name="budget" class="search-bar">
-          <option value="" {sel_any_b}>Any annual fees</option>
-          <option value="lt1" {sel_lt1}>Below ₹1 lakh / year</option>
-          <option value="b1_2" {sel_b1_2}>₹1–2 lakh / year</option>
-          <option value="gt2" {sel_gt2}>Above ₹2 lakh / year</option>
-        </select>
+      <form method="GET" class="grid md:grid-cols-4 gap-3 mt-4 mb-3 items-end">
+        <div>
+          <label class="filter-label">Budget (Tuition / Year)</label>
+          <select name="budget" class="search-bar">
+            <option value="" {sel_b_any}>Any budget</option>
+            <option value="lt1" {sel_b_lt1}>Below ₹1,00,000</option>
+            <option value="b1_2" {sel_b_b1_2}>₹1,00,000 – ₹2,00,000</option>
+            <option value="gt2" {sel_b_gt2}>Above ₹2,00,000</option>
+          </select>
+        </div>
 
-        <select name="rating" class="search-bar">
-          <option value="" {sel_any_r}>Any rating</option>
-          <option value="4.0" {sel_40}>4.0★ &amp; above</option>
-          <option value="4.5" {sel_45}>4.5★ &amp; above</option>
-        </select>
+        <div>
+          <label class="filter-label">Branch / Track</label>
+          <input name="branch" value="{branch}" placeholder="e.g. CSE, AI, ECE" class="search-bar" />
+        </div>
 
-        <button class="px-3 py-2 bg-indigo-600 rounded text-sm">Filter</button>
+        <div>
+          <label class="filter-label">Min Rating</label>
+          <select name="rating" class="search-bar">
+            <option value="" {sel_r_any}>Any rating</option>
+            <option value="4.0" {sel_r_4}>4.0★ & above</option>
+            <option value="4.5" {sel_r_45}>4.5★ & above</option>
+          </select>
+        </div>
+
+        <div>
+          <button class="w-full px-3 py-2 bg-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-500">
+            Apply filters
+          </button>
+        </div>
       </form>
 
       <table class="table mt-2">
         <tr>
           <th>College</th>
+          <th>Branches / Tracks</th>
           <th>Location</th>
-          <th>Strong branches</th>
-          <th>Approx. fees / year</th>
+          <th>Approx Fees / Year</th>
           <th>Rating</th>
         </tr>
         {rows}
       </table>
     </div>
     """
-    return render_page(content, "Colleges")
+    return render_page(content, "Colleges | CareerTech")
 
 
 # -------------------- MENTORS --------------------
-@app.route("/mentors")
-def mentors():
+@app.route("/mentorship")
+def mentorship():
     db = get_db()
     data = db.query(Mentor).all()
     db.close()
@@ -828,26 +815,31 @@ def mentors():
     for m in data:
         cards += f"""
         <div class="mentor-card">
-          <h3 class="text-sm font-semibold mb-1">{m.name}</h3>
-          <p class="text-[11px] text-indigo-300 mb-1">{m.role}</p>
-          <p class="text-xs text-slate-300 mb-2">{m.experience}</p>
-          <p class="text-[11px] text-emerald-300">Focus: {m.speciality}</p>
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <h3 class="text-base font-semibold">{m.name}</h3>
+              <p class="text-[11px] text-cyan-300">{m.role} · {m.company}</p>
+            </div>
+            <span class="mentor-tag">{m.speciality}</span>
+          </div>
+          <p class="text-xs text-slate-300 mb-3">{m.experience}</p>
+          <button class="mentor-btn">Book mock call (demo)</button>
         </div>
         """
 
     content = f"""
-    <div class="max-w-6xl mx-auto">
-      <h2 class="section-title mb-3">Mentors (example profiles)</h2>
-      <p class="text-sm text-slate-300 mb-4">
-        These are sample mentor profiles showing the kind of people CareerTech can onboard — working engineers
-        who can talk branch-wise and company-wise reality.
+    <div class="max-w-6xl mx-auto space-y-4">
+      <h2 class="page-title">Mentors · Real Engineers, Real Guidance</h2>
+      <p class="page-sub">
+        These are sample mentor profiles to show how CareerTech can connect students with real SDEs, Data Scientists and AI Engineers.
       </p>
+
       <div class="grid md:grid-cols-3 gap-4">
         {cards}
       </div>
     </div>
     """
-    return render_page(content, "Mentors")
+    return render_page(content, "Mentors | CareerTech")
 
 
 # -------------------- JOBS --------------------
@@ -861,164 +853,160 @@ def jobs():
     for j in data:
         cards += f"""
         <div class="job-card">
-          <h3 class="text-sm font-semibold mb-1">{j.title}</h3>
-          <p class="text-[11px] text-indigo-300 mb-1">{j.company}</p>
-          <p class="text-[11px] text-slate-400 mb-1">{j.location}</p>
-          <p class="text-[11px] text-emerald-300 font-semibold">{j.stipend}</p>
+          <p class="job-title">{j.title}</p>
+          <p class="job-company">{j.company}</p>
+          <p class="job-meta">{j.location}</p>
+          <p class="job-salary">{j.salary}</p>
+          <p class="job-track">Track: {j.track}</p>
         </div>
         """
 
     content = f"""
-    <div class="max-w-6xl mx-auto">
-      <h2 class="section-title mb-3">Jobs &amp; internship snapshot</h2>
-      <p class="text-sm text-slate-300 mb-4">
-        These example roles represent realistic openings for final-year B-Tech students and recent graduates.
-        A real platform would plug into hiring partners and live job feeds.
+    <div class="max-w-6xl mx-auto space-y-4">
+      <h2 class="page-title">Jobs & Role Landscape</h2>
+      <p class="page-sub">
+        These are example tech roles B.Tech grads aim for. Packages and locations are indicative (demo).
       </p>
-      <div class="grid md:grid-cols-3 gap-4">
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards}
       </div>
     </div>
     """
-    return render_page(content, "Jobs & Internships")
+    return render_page(content, "Jobs | CareerTech")
 
 
 # -------------------- GLOBAL MATCH --------------------
 @app.route("/global-match")
 def global_match():
     content = """
-    <div class="max-w-5xl mx-auto">
-      <h2 class="section-title mb-3">Global path &amp; remote-first careers</h2>
-      <p class="text-sm text-slate-300 mb-4">
-        CareerTech can help students explore three categories of global options:
+    <div class="max-w-5xl mx-auto space-y-4">
+      <h2 class="page-title">Global Match – MS & Tech Pathways</h2>
+      <p class="page-sub">
+        Many B.Tech students plan for MS in CS / AI / Data abroad. This section gives a high-level view (demo).
       </p>
 
       <div class="grid md:grid-cols-3 gap-4">
         <div class="support-box">
-          <h3 class="text-sm font-semibold mb-2">1. MS &amp; higher studies</h3>
-          <ul class="text-xs text-slate-300 space-y-1.5">
-            <li>• USA – MS in CS / Data / Robotics</li>
-            <li>• Germany – low-tuition tech degrees</li>
-            <li>• Canada – course + PR path</li>
-            <li>• UK / Ireland – 1-year masters</li>
+          <h3 class="section-title mb-2">Popular Countries</h3>
+          <ul class="support-list">
+            <li>• USA – MS in CS, AI, Data</li>
+            <li>• Canada – PG diplomas in IT, Data</li>
+            <li>• Germany – TU universities (low fees)</li>
+            <li>• UK – 1-year masters in CS / AI</li>
           </ul>
         </div>
+
         <div class="support-box">
-          <h3 class="text-sm font-semibold mb-2">2. Remote-first jobs</h3>
-          <ul class="text-xs text-slate-300 space-y-1.5">
-            <li>• Backend / frontend engineers</li>
-            <li>• Data &amp; analytics engineers</li>
-            <li>• DevOps &amp; SRE roles</li>
-            <li>• Freelance product engineering</li>
+          <h3 class="section-title mb-2">Typical Requirements</h3>
+          <ul class="support-list">
+            <li>• Solid CGPA & strong projects</li>
+            <li>• GRE/IELTS/TOEFL (varies)</li>
+            <li>• SOP + LORs showcasing impact</li>
+            <li>• Clear goal: role / research area</li>
           </ul>
         </div>
+
         <div class="support-box">
-          <h3 class="text-sm font-semibold mb-2">3. Exchange &amp; internships</h3>
-          <ul class="text-xs text-slate-300 space-y-1.5">
-            <li>• Summer research internships</li>
-            <li>• Erasmus-style semester exchanges</li>
-            <li>• Industry-sponsored capstone projects</li>
+          <h3 class="section-title mb-2">CareerTech's Role (vision)</h3>
+          <ul class="support-list">
+            <li>• Build MS-focused 2-year roadmap</li>
+            <li>• Suggest projects + research areas</li>
+            <li>• Profile-building checklist</li>
+            <li>• Connect with mentors abroad</li>
           </ul>
         </div>
       </div>
-
-      <p class="text-xs text-slate-400 mt-4">
-        All of this is demo content to show structure — a live product would integrate with counsellors,
-        partner universities and remote-first employers.
-      </p>
     </div>
     """
-    return render_page(content, "Global Path")
+    return render_page(content, "Global Match | CareerTech")
 
 
-# -------------------- AI CHATBOT --------------------
+# -------------------- AI CAREER BOT --------------------
 CHATBOT_HTML = """
 <div class="max-w-3xl mx-auto space-y-6">
-  <h1 class="text-2xl md:text-3xl font-bold mb-1">CareerTech AI Mentor</h1>
-  {% if not locked %}
-    <p class="text-sm text-slate-300">
-      Describe your branch, year, skills and target role. The AI mentor will respond with a concise roadmap.
-      Each account currently has <b>one free long chat</b> (prototype).
-    </p>
-  {% else %}
-    <p class="text-sm text-slate-300">
-      Your free AI session is over for this demo account. You can still see the old messages below.
-    </p>
-  {% endif %}
+  <h1 class="text-2xl md:text-3xl font-bold">CareerTech AI Mentor</h1>
+  <p class="text-sm text-slate-300">
+    Chat with an AI that behaves like a senior from a top tech company. It will ask about your branch, skills and goals – and then suggest a realistic plan.
+  </p>
 
-  <div class="bg-slate-900/80 border border-slate-700 rounded-2xl p-4 h-[360px] overflow-y-auto">
+  <form method="GET" action="/chatbot" class="mb-2">
+    <input type="hidden" name="reset" value="1">
+    <button class="text-[11px] px-3 py-1 rounded-full border border-slate-600 hover:bg-slate-800">
+      🔄 Clear chat on screen
+    </button>
+  </form>
+
+  <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 h-[360px] overflow-y-auto mb-3">
     {% if history %}
       {% for m in history %}
         <div class="mb-3">
           {% if m.role == 'user' %}
             <div class="text-[10px] text-slate-400 mb-0.5">You</div>
-            <div class="inline-block px-3 py-2 rounded-2xl bg-indigo-600 text-xs max-w-[92%]">
+            <div class="inline-block px-3 py-2 rounded-2xl bg-indigo-600 text-xs md:text-sm max-w-[90%]">
               {{ m.content }}
             </div>
           {% else %}
             <div class="text-[10px] text-slate-400 mb-0.5">CareerTech AI</div>
-            <div class="inline-block px-3 py-2 rounded-2xl bg-slate-800 text-xs max-w-[92%]">
+            <div class="inline-block px-3 py-2 rounded-2xl bg-slate-800 text-xs md:text-sm max-w-[90%]">
               {{ m.content }}
             </div>
           {% endif %}
         </div>
       {% endfor %}
     {% else %}
-      <p class="text-xs text-slate-400">
-        👋 Start by telling me: your branch, year, college tier, current skills and what role you want (SDE / DS / DevOps etc.).
+      <p class="text-sm text-slate-400">
+        👋 Start by saying: “I am a 3rd year CSE student, I know basic Python and C, I want SDE role.”
       </p>
     {% endif %}
   </div>
 
-  {% if not locked %}
-    <form method="POST" class="flex gap-2">
-      <input name="message" class="input-box flex-1" autocomplete="off" placeholder="Type your question or profile..." required>
-      <button class="px-4 py-2 rounded-full bg-indigo-600 text-xs font-semibold">Send</button>
-    </form>
-    <form method="POST" action="/chatbot/end" class="mt-2">
-      <button class="text-[10px] px-3 py-1.5 rounded-full border border-rose-500/70 text-rose-200 hover:bg-rose-500/10">
-        🔒 End free AI session
-      </button>
-    </form>
-  {% else %}
-    <p class="text-[10px] text-slate-400 mt-2">
-      For the investor demo, this shows how AI guidance would plug into the platform.
-    </p>
-  {% endif %}
+  <form method="POST" class="flex gap-2">
+    <input
+      name="message"
+      autocomplete="off"
+      placeholder="Type your message here..."
+      class="flex-1 input-box"
+      required
+    >
+    <button class="px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">
+      Send
+    </button>
+  </form>
 </div>
 """
 
 
 @app.route("/chatbot", methods=["GET", "POST"])
 def chatbot():
-    if "user_id" not in session:
-        return redirect("/login")
+    user_id = session.get("user_id")
+    if not user_id:
+        # allow viewing page but redirect to login for real use if you want
+        pass
 
-    user_id = session["user_id"]
-    db = get_db()
-    usage = db.query(AiUsage).filter_by(user_id=user_id).first()
-    locked = bool(usage and usage.used == 1)
+    if request.args.get("reset") == "1":
+        session["ai_history"] = []
+        return redirect("/chatbot")
 
     history = session.get("ai_history", [])
     if not isinstance(history, list):
         history = []
+    session["ai_history"] = history
 
     if request.method == "POST":
-        if locked:
-            db.close()
-            html = render_template_string(CHATBOT_HTML, history=history, locked=True)
-            return render_page(html, "AI Mentor")
+        user_msg = request.form.get("message", "").strip()
+        if user_msg:
+            history.append({"role": "user", "content": user_msg})
+            groq_client = get_groq_client()
 
-        msg = request.form.get("message", "").strip()
-        if msg:
-            history.append({"role": "user", "content": msg})
-            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
-            client = get_groq_client()
-            if client is None:
-                reply = "AI is not configured yet on this server. Set GROQ_API_KEY to enable it."
+            if groq_client is None:
+                reply = (
+                    "AI backend (Groq) is not configured yet.\n"
+                    "Once configured with a GROQ_API_KEY, this will give you a live roadmap."
+                )
             else:
                 try:
-                    resp = client.chat.completions.create(
+                    messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
+                    resp = groq_client.chat.completions.create(
                         model="llama-3.1-8b-instant",
                         messages=messages,
                         temperature=0.7,
@@ -1026,50 +1014,30 @@ def chatbot():
                     reply = resp.choices[0].message.content
                 except Exception as e:
                     reply = f"AI error: {e}"
+
             history.append({"role": "assistant", "content": reply})
             session["ai_history"] = history
 
-    db.close()
-    html = render_template_string(CHATBOT_HTML, history=history, locked=locked)
-    return render_page(html, "AI Mentor")
+    html = render_template_string(CHATBOT_HTML, history=history)
+    return render_page(html, "AI Mentor | CareerTech")
 
 
-@app.route("/chatbot/end", methods=["POST"])
-def end_chatbot():
-    if "user_id" not in session:
-        return redirect("/login")
-
-    user_id = session["user_id"]
-    db = get_db()
-    usage = db.query(AiUsage).filter_by(user_id=user_id).first()
-    if usage is None:
-        usage = AiUsage(user_id=user_id, used=1)
-        db.add(usage)
-    else:
-        usage.used = 1
-    db.commit()
-    db.close()
-    return redirect("/chatbot")
-
-
-# -------------------- SUPPORT (simple) --------------------
+# -------------------- SUPPORT --------------------
 @app.route("/support")
 def support():
     content = """
-    <div class="max-w-lg mx-auto">
-      <h2 class="section-title mb-3">Support &amp; contact</h2>
-      <p class="text-sm text-slate-300 mb-3">
-        For the demo, you can explain to the investor that these are placeholder details.
-        In a real launch, this would connect to WhatsApp / email / ticketing system.
-      </p>
+    <div class="max-w-xl mx-auto space-y-3">
+      <h2 class="page-title">Support & Contact</h2>
+      <p class="page-sub">Prototype only – replace with real contact details later.</p>
       <div class="support-box">
-        <p class="text-xs">📧 support@careertech.in</p>
-        <p class="text-xs">📞 +91-98xx-xxx-xxx</p>
+        <p>📧 support@careertech.in (demo)</p>
+        <p>📍 Hyderabad, India</p>
       </div>
     </div>
     """
-    return render_page(content, "Support")
+    return render_page(content, "Support | CareerTech")
 
 
+# -------------------- MAIN --------------------
 if __name__ == "__main__":
     app.run(debug=True)
