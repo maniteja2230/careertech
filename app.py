@@ -245,67 +245,38 @@ BASE_HTML = """
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>{{ title or "CareerTech" }}</title>
+  <title>{% if title %}{{ title }}{% else %}CareerTech{% endif %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/style.css">
   <style>
-    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-    .primary-cta {{ @apply px-4 py-2 rounded-full bg-indigo-500 hover:bg-indigo-600 text-xs md:text-sm font-semibold shadow; }}
-    .ghost-cta {{ @apply px-4 py-2 rounded-full border border-slate-600 text-xs md:text-sm hover:bg-slate-800; }}
-    .feature-card {{ @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4 text-xs md:text-sm hover:border-indigo-500/70 hover:-translate-y-0.5 transition; }}
-    .dash-box {{ @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4; }}
-    .input-box {{ @apply w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs md:text-sm focus:outline-none focus:border-indigo-500; }}
-    .submit-btn {{ @apply w-full px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs md:text-sm font-semibold; }}
-    .table {{ @apply w-full text-left text-xs md:text-sm border-collapse; }}
-    .table th {{ @apply bg-slate-900/80 border-b border-slate-800 px-3 py-2 text-slate-300; }}
-    .table td {{ @apply border-b border-slate-800 px-3 py-2 text-slate-200; }}
-
-    /* AI popup */
-    .ai-fab {{
+    .ai-fab {
       position: fixed;
-      right: 20px;
-      bottom: 20px;
+      right: 24px;
+      bottom: 24px;
       z-index: 1000;
-      background: linear-gradient(135deg, #6366f1, #22d3ee);
-      width: 64px;
-      height: 64px;
-      border-radius: 999px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      box-shadow: 0 20px 40px rgba(15,23,42,0.8);
-      animation: float 3s ease-in-out infinite;
-    }}
-    .ai-fab:hover {{
-      transform: scale(1.07);
-    }}
-    @keyframes float {{
-      0% {{ transform: translateY(0px); }}
-      50% {{ transform: translateY(-6px); }}
-      100% {{ transform: translateY(0px); }}
-    }}
-    .ai-modal-bg {{
+    }
+    .ai-modal-bg {
       position: fixed;
       inset: 0;
-      background: rgba(15,23,42,0.6);
+      background: rgba(2,6,23,0.6);
       display: none;
-      z-index: 900;
-    }}
-    .ai-modal {{
+      z-index: 1000;
+    }
+    .ai-modal {
       position: fixed;
-      right: 20px;
-      bottom: 100px;
+      right: 24px;
+      bottom: 110px;
       width: 380px;
       max-width: 95%;
-      background: radial-gradient(circle at top left, #1f2937, #020617);
+      background: #020617;
       border-radius: 18px;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.8);
-      padding: 14px;
+      box-shadow: 0 18px 40px rgba(15,23,42,0.9);
+      padding: 14px 16px 18px;
       display: none;
-      z-index: 901;
-      border: 1px solid rgba(129,140,248,0.4);
-    }}
+      z-index: 1001;
+      border: 1px solid rgba(129,140,248,0.6);
+    }
   </style>
 </head>
 <body class="bg-[#020617] text-white">
@@ -313,11 +284,11 @@ BASE_HTML = """
 <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
 
   <!-- NAVBAR -->
-  <nav class="flex justify-between items-center px-4 md:px-10 py-3 md:py-4 bg-black/40 backdrop-blur-md border-b border-slate-800">
+  <nav class="flex justify-between items-center px-6 md:px-10 py-4 bg-black/40 backdrop-blur-md border-b border-slate-800">
     <!-- LOGO + TITLE -->
     <div class="flex items-center gap-3">
-      <div class="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg shadow-indigo-500/40">
-        <span class="text-xl">⚙️</span>
+      <div class="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg shadow-indigo-500/40 overflow-hidden">
+        <img src="/static/logo.png" class="w-11 h-11 object-contain" alt="CareerTech logo">
       </div>
       <div>
         <p class="font-bold text-lg md:text-xl tracking-tight">CareerTech</p>
@@ -326,31 +297,30 @@ BASE_HTML = """
     </div>
 
     <!-- NAV LINKS -->
-    <div class="hidden md:flex items-center gap-5 text-xs md:text-sm">
+    <div class="hidden md:flex items-center gap-6 text-sm">
       <a href="/" class="hover:text-indigo-400">Home</a>
-      <a href="/branches" class="hover:text-indigo-400">Branches</a>
-      <a href="/roadmaps" class="hover:text-indigo-400">Roadmaps</a>
-      <a href="/projects" class="hover:text-indigo-400">Projects</a>
-      <a href="/internships" class="hover:text-indigo-400">Internships</a>
-      <a href="/study-abroad" class="hover:text-indigo-400">Study Abroad</a>
+      <a href="/courses" class="hover:text-indigo-400">Courses</a>
+      <a href="/colleges" class="hover:text-indigo-400">Colleges</a>
+      <a href="/mentorship" class="hover:text-indigo-400">Mentorship</a>
+      <a href="/jobs" class="hover:text-indigo-400">Jobs</a>
+      <a href="/global-match" class="hover:text-indigo-400">Global Match</a>
       <a href="/chatbot" class="hover:text-indigo-400">AI Career Bot</a>
       <a href="/support" class="hover:text-indigo-400">Support</a>
 
       {% if session.get('user') %}
-        <div class="flex items-center gap-2">
-          <a href="/dashboard" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 hover:border-indigo-500">
-            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-xs font-bold">
-              {{ session.get('user')[0]|upper }}
-            </div>
-            <div class="text-left leading-tight">
-              <p class="text-[11px] text-slate-400">Logged in as</p>
-              <p class="text-xs font-semibold truncate max-w-[110px]">{{ session.get('user') }}</p>
-            </div>
-          </a>
-          <a href="/logout" class="px-3 py-1.5 rounded-full bg-rose-500 hover:bg-rose-600 text-[11px] font-semibold shadow shadow-rose-500/40">
-            Logout
-          </a>
+        <!-- user profile pill -->
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700">
+          <div class="w-7 h-7 rounded-full bg-indigo-500/80 flex items-center justify-center text-xs">
+            {{ session.get('user')[0]|upper }}
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-[11px] text-slate-400">Logged in as</span>
+            <span class="text-[13px] font-semibold">{{ session.get('user') }}</span>
+          </div>
         </div>
+        <a href="/logout" class="px-4 py-1.5 rounded-full bg-rose-500 hover:bg-rose-600 text-xs font-semibold shadow shadow-rose-500/40">
+          Logout
+        </a>
       {% else %}
         <a href="/login" class="px-4 py-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-xs font-semibold shadow shadow-indigo-500/40">
           Login
@@ -360,38 +330,42 @@ BASE_HTML = """
   </nav>
 
   <!-- PAGE CONTENT -->
-  <main class="px-4 md:px-10 py-6 md:py-8">
+  <main class="px-5 md:px-10 py-8">
     {{ content|safe }}
   </main>
+
 </div>
 
-<!-- AI POPUP FAB -->
-<button id="aiFab" class="ai-fab" title="Chat with CareerTech AI">
-  🧑‍💻
+<!-- AI pop-up FAB (chef bot) -->
+<button id="aiFab" class="ai-fab bg-indigo-500 hover:bg-indigo-400 px-5 py-3 rounded-full shadow-xl flex items-center gap-2 text-sm md:text-base">
+  <span class="text-2xl">👨‍🍳</span>
+  <div class="hidden md:block text-left">
+    <p class="text-[11px] text-slate-200 leading-none">Need help?</p>
+    <p class="text-xs font-semibold leading-tight">Ask CareerTech AI</p>
+  </div>
 </button>
 
+<!-- modal overlay -->
 <div id="aiModalBg" class="ai-modal-bg"></div>
 
+<!-- modal box -->
 <div id="aiModal" class="ai-modal">
   <div class="flex items-center justify-between mb-2">
-    <div class="flex items-center gap-2">
-      <div class="w-8 h-8 rounded-full bg-indigo-500/40 flex items-center justify-center text-lg">🤖</div>
-      <div>
-        <p class="text-xs font-semibold">CareerTech AI Mentor</p>
-        <p class="text-[10px] text-slate-400">Roadmaps · Projects · Internships</p>
-      </div>
+    <div>
+      <p class="text-xs text-emerald-300 uppercase tracking-[0.18em]">CareerTech AI</p>
+      <p class="text-sm font-semibold">Instant mentor for B-Tech</p>
     </div>
-    <button id="closeAi" class="text-slate-400 hover:text-white text-sm">✕</button>
+    <button id="closeAi" class="text-slate-400 hover:text-white text-lg leading-none">✕</button>
   </div>
-  <p class="text-[11px] text-slate-300 mb-3">
-    I can build a roadmap for your branch, suggest projects and guide you for placements.
+  <p class="text-xs text-slate-300 mb-3">
+    Ask doubts on branches, skills, projects, internships or let the AI take your mock interview.
   </p>
   <div class="flex flex-col gap-2">
-    <a href="/chatbot" class="w-full px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs text-center font-semibold">
-      Start AI Career Chat
+    <a href="/chatbot" class="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs md:text-sm text-center">
+      🚀 Start AI Career Chat
     </a>
-    <a href="/mock-interview" class="w-full px-3 py-2 rounded-xl border border-slate-700 hover:border-cyan-400 text-[11px] text-center">
-      Practice Tech Interview
+    <a href="/mock-interviews/ai" class="px-3 py-2 rounded-lg border border-slate-700 hover:bg-slate-900 text-xs md:text-sm text-center">
+      🎤 AI Mock Interview
     </a>
   </div>
 </div>
@@ -402,23 +376,32 @@ BASE_HTML = """
   const aiModalBg = document.getElementById('aiModalBg');
   const closeAi = document.getElementById('closeAi');
 
-  function openAi() {{
+  function openAi() {
     aiModal.style.display = 'block';
     aiModalBg.style.display = 'block';
-  }}
-  function closeAiModal() {{
+  }
+  function closeAiModal() {
     aiModal.style.display = 'none';
     aiModalBg.style.display = 'none';
-  }}
+  }
 
-  aiFab.addEventListener('click', openAi);
-  aiModalBg.addEventListener('click', closeAiModal);
-  closeAi.addEventListener('click', closeAiModal);
+  if (aiFab) aiFab.addEventListener('click', openAi);
+  if (aiModalBg) aiModalBg.addEventListener('click', closeAiModal);
+  if (closeAi) closeAi.addEventListener('click', closeAiModal);
+
+  // small entrance animation
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      aiFab.classList.add('animate-bounce');
+      setTimeout(() => aiFab.classList.remove('animate-bounce'), 1200);
+    }, 1200);
+  });
 </script>
 
 </body>
 </html>
 """
+
 
 
 def render_page(content_html, title="CareerTech"):
